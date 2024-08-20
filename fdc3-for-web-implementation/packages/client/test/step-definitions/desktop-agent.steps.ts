@@ -2,14 +2,15 @@ import { DataTable, Given, When } from '@cucumber/cucumber'
 import { CustomWorld } from '../world';
 import { TestMessaging } from '../support/TestMessaging';
 import { handleResolve, setupGenericSteps } from '@kite9/testing';
-import { BasicDesktopAgent, DefaultChannelSupport, DefaultIntentSupport, Messaging, NoopAppSupport, NoopHandshakeSupport } from '@kite9/da-proxy';
+import { BasicDesktopAgent, DefaultChannelSupport, DefaultHandshakeSupport, DefaultIntentSupport } from '@kite9/da-proxy';
 import { MockDocument, MockWindow } from '../support/MockDocument';
-import { getAgentAPI } from '../../src';
-import { Options } from '@kite9/fdc3-common';
+import { getAgent } from '../../src';
+import { GetAgentParams } from '@kite9/fdc3-common';
 import { MockFDC3Server } from '../support/MockFDC3Server';
 import { DefaultDesktopAgentIntentResolver } from '../../src/intent-resolution/DefaultDesktopAgentIntentResolver';
 import { DefaultDesktopAgentChannelSelector } from '../../src/channel-selector/DefaultDesktopAgentChannelSelector';
-import { DefaultChannel } from '@kite9/da-proxy/src';
+import { NoopAppSupport } from '../../src/apps/NoopAppSupport';
+import { MockStorage } from '../support/MockStorage';
 
 setupGenericSteps()
 Given('Parent Window desktop {string} listens for postMessage events in {string}, returns direct message response', async function (this: CustomWorld, field: string, w: string) {
@@ -24,24 +25,6 @@ Given('Parent Window desktop {string} listens for postMessage events in {string}
     this.props[field] = mock
 })
 
-function buildUserChannelState(messaging: Messaging): DefaultChannel[] {
-    // TODO: Figure out how to set initial user channels.  
-    // Should probably be in the message from the server.
-    return [
-        new DefaultChannel(messaging, "one", "user", {
-            color: "red",
-            name: "THE RED CHANNEL"
-        }),
-        new DefaultChannel(messaging, "two", "user", {
-            color: "blue",
-            name: "THE BLUE CHANNEL"
-        }),
-        new DefaultChannel(messaging, "three", "user", {
-            color: "green",
-            name: "THE GREEN CHANNEL"
-        })
-    ]
-}
 
 Given('A Dummy Desktop Agent in {string}', async function (this: CustomWorld, field: string) {
 
@@ -49,19 +32,14 @@ Given('A Dummy Desktop Agent in {string}', async function (this: CustomWorld, fi
         this.messaging = new TestMessaging();
     }
 
-    const version = "2.0"
-    const intentResolver = new DefaultDesktopAgentIntentResolver({ uri: "https://localhost:8080/dummy-intent-resolver.html" })
-    const channelSelector = new DefaultDesktopAgentChannelSelector({ uri: "https://localhost:8080/dummy-channel-selector.html" })
-    const cs = new DefaultChannelSupport(this.messaging, buildUserChannelState(this.messaging), null, channelSelector)
-    const hs = new NoopHandshakeSupport()
+    const intentResolver = new DefaultDesktopAgentIntentResolver("https://localhost:8080/dummy-intent-resolver.html")
+    const channelSelector = new DefaultDesktopAgentChannelSelector("https://localhost:8080/dummy-channel-selector.html")
+    const cs = new DefaultChannelSupport(this.messaging, channelSelector)
+    const hs = new DefaultHandshakeSupport(this.messaging)
     const is = new DefaultIntentSupport(this.messaging, intentResolver)
-    const as = new NoopAppSupport(this.messaging, {
-        appId: "Test App Id",
-        desktopAgent: "Test DA",
-        instanceId: "123-ABC"
-    }, 'cucumber-desktop-agent')
+    const as = new NoopAppSupport(this.messaging)
 
-    const da = new BasicDesktopAgent(hs, cs, is, as, version)
+    const da = new BasicDesktopAgent(hs, cs, is, as)
     await da.connect()
 
     this.props[field] = da
@@ -76,7 +54,7 @@ Given('`window.fdc3` is injected into the runtime with the value in {string}', a
 
 When('I call getAgentAPI for a promise result', function (this: CustomWorld) {
     try {
-        this.props['result'] = getAgentAPI()
+        this.props['result'] = getAgent()
     } catch (error) {
         this.props['result'] = error
     }
@@ -93,7 +71,7 @@ When('I call getAgentAPI for a promise result with the following options', funct
                 return [k, val3]
             })
         )
-        this.props['result'] = getAgentAPI(toArgs as Options)
+        this.props['result'] = getAgent(toArgs as GetAgentParams)
     } catch (error) {
         this.props['result'] = error
     }
@@ -111,4 +89,9 @@ Given('a browser document in {string} and window in {string}', async function (t
     // mock document exists in the window
     globalThis.document = new MockDocument("mockDocument", mw) as any
     this.props[d] = globalThis.document as any;
+
+    // browser storage
+    globalThis.sessionStorage = new MockStorage() as any
+
+    // window's app identity
 })
